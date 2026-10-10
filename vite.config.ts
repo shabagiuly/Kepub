@@ -4,9 +4,9 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
-  // If building on GitHub Pages or if repo is known, set proper base path
-  const repoName = process.env.GITHUB_REPOSITORY ? process.env.GITHUB_REPOSITORY.split('/')[1] : '';
-  const base = repoName ? `/${repoName}/` : './';
+  // If building on GitHub Pages, use the base path configured by GitHub Actions
+  const rawBase = process.env.BASE_PATH || (process.env.GITHUB_REPOSITORY ? `/${process.env.GITHUB_REPOSITORY.split('/')[1]}/` : './');
+  const base = rawBase.startsWith('/') && !rawBase.endsWith('/') ? `${rawBase}/` : rawBase;
 
   return {
     base,

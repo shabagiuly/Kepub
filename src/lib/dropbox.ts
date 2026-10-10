@@ -5,6 +5,15 @@ const STORAGE_KEY = 'kepubify_dropbox_config';
 export const DEFAULT_DROPBOX_FOLDER = '/Applications/Rakuten Kobo';
 
 /**
+ * Detects if app is running on static hosting (like GitHub Pages) where no backend proxy exists
+ */
+function isStaticHosting(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  return host.endsWith('github.io') || host.endsWith('pages.dev') || host.endsWith('netlify.app');
+}
+
+/**
  * Checks which Kobo folder already exists in the user's Dropbox account
  */
 export async function detectExistingKoboFolder(token: string): Promise<string | null> {
@@ -16,18 +25,8 @@ export async function detectExistingKoboFolder(token: string): Promise<string | 
 
   for (const folder of candidateFolders) {
     try {
-      // Try proxy first, then direct API fallback (for static hosts like GitHub Pages)
-      let res = await fetch('/api/dropbox/metadata', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token.trim()}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ path: folder }),
-      });
-
-      if (res.status === 404) {
-        res = await fetch('https://api.dropboxapi.com/2/files/get_metadata', {
+      if (isStaticHosting()) {
+        const res = await fetch('https://api.dropboxapi.com/2/files/get_metadata', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token.trim()}`,
@@ -35,12 +34,34 @@ export async function detectExistingKoboFolder(token: string): Promise<string | 
           },
           body: JSON.stringify({ path: folder }),
         });
-      }
+        if (res.ok) {
+          const data = await res.json();
+          if (data['.tag'] === 'folder') return folder;
+        }
+      } else {
+        let res = await fetch('/api/dropbox/metadata', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token.trim()}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ path: folder }),
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data['.tag'] === 'folder') {
-          return folder;
+        if (res.status === 404) {
+          res = await fetch('https://api.dropboxapi.com/2/files/get_metadata', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token.trim()}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ path: folder }),
+          });
+        }
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data['.tag'] === 'folder') return folder;
         }
       }
     } catch {
@@ -241,19 +262,7 @@ async function ensureFolderExists(token: string, folder: string): Promise<void> 
   const normalized = clean.startsWith('/') ? clean : `/${clean}`;
 
   try {
-    let res = await fetch('/api/dropbox/create_folder', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token.trim()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        path: normalized,
-        autorename: false,
-      }),
-    });
-
-    if (res.status === 404) {
+    if (isStaticHosting()) {
       await fetch('https://api.dropboxapi.com/2/files/create_folder_v2', {
         method: 'POST',
         headers: {
@@ -265,6 +274,32 @@ async function ensureFolderExists(token: string, folder: string): Promise<void> 
           autorename: false,
         }),
       });
+    } else {
+      let res = await fetch('/api/dropbox/create_folder', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token.trim()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          path: normalized,
+          autorename: false,
+        }),
+      });
+
+      if (res.status === 404) {
+        await fetch('https://api.dropboxapi.com/2/files/create_folder_v2', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token.trim()}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            path: normalized,
+            autorename: false,
+          }),
+        });
+      }
     }
   } catch (err) {
     // Ignore folder creation errors (folder might already exist)
@@ -274,8 +309,7 @@ async function ensureFolderExists(token: string, folder: string): Promise<void> 
 
 /**
  * Upload a file to Dropbox in the specified folder.
- * Uses the backend proxy endpoint /api/dropbox/upload to bypass browser CORS restrictions,
- * with fallback to direct Dropbox API if needed.
+ * Seamlessly handles both GitHub Pages (direct API) and local dev (proxy).
  */
 export async function uploadFileToDropbox(
   token: string,
@@ -302,14 +336,51 @@ export async function uploadFileToDropbox(
     mute: false,
   });
 
-  onProgress?.(10);
-  const arrayBuffer = await fileBlob.arrayBuffer();
-  onProgress?.(25);
+  onProgress?.(15);
 
-  const performUpload = (url: string): Promise<UploadResult> => {
+  // Direct upload to Dropbox using fetch (standard, reliable for browser on GitHub Pages)
+  const uploadDirect = async (): Promise<UploadResult> => {
+    onProgress?.(35);
+    const response = await fetch('https://content.dropboxapi.com/2/files/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token.trim()}`,
+        'Dropbox-API-Arg': apiArgs,
+        'Content-Type': 'application/octet-stream',
+      },
+      body: fileBlob,
+    });
+
+    onProgress?.(85);
+
+    if (response.ok) {
+      const data = await response.json();
+      onProgress?.(100);
+      return {
+        path: data.path_display || fullPath,
+        name: data.name || fileName,
+        size: data.size || fileBlob.size,
+      };
+    }
+
+    let errData: any = null;
+    try {
+      errData = await response.json();
+    } catch {
+      // ignore
+    }
+    const msg = parseDropboxError(errData, response.status);
+    throw new Error(msg);
+  };
+
+  // Upload via backend proxy (only when in dev server)
+  const uploadProxy = async (): Promise<UploadResult> => {
+    onProgress?.(25);
+    const arrayBuffer = await fileBlob.arrayBuffer();
+
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', url, true);
+      xhr.open('POST', '/api/dropbox/upload', true);
       xhr.setRequestHeader('Authorization', `Bearer ${token.trim()}`);
       xhr.setRequestHeader('Dropbox-API-Arg', apiArgs);
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
@@ -358,17 +429,16 @@ export async function uploadFileToDropbox(
     });
   };
 
+  // On GitHub Pages or static hosts, go directly to Dropbox
+  if (isStaticHosting()) {
+    return await uploadDirect();
+  }
+
+  // Otherwise try dev proxy first, fallback to direct upload
   try {
-    // 1. Try our server-side proxy first (bypasses browser CORS completely)
-    return await performUpload('/api/dropbox/upload');
-  } catch (proxyError: unknown) {
-    console.warn('Proxy upload failed, attempting direct upload fallback...', proxyError);
-    // 2. Fallback to direct Dropbox API
-    try {
-      return await performUpload('https://content.dropboxapi.com/2/files/upload');
-    } catch {
-      const message = proxyError instanceof Error ? proxyError.message : 'Erreur de transfert vers Dropbox.';
-      throw new Error(message);
-    }
+    return await uploadProxy();
+  } catch (proxyError) {
+    console.warn('Proxy upload failed, using direct upload fallback...', proxyError);
+    return await uploadDirect();
   }
 }

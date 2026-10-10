@@ -3,43 +3,54 @@
   <head>
     <meta charset="UTF-8" />
     <script>
-      (function() {
-        const NativeWS = window.WebSocket;
+      // Ensure trailing slash on directory visits (e.g. /Kepub -> /Kepub/)
+      try {
+        var p = window.location.pathname;
+        if (p && !p.endsWith('/') && !p.includes('.')) {
+          window.location.replace(p + '/' + window.location.search + window.location.hash);
+        }
+      } catch (_) {}
+
+      // Safe HMR error suppressor for dev environment
+      try {
+        var NativeWS = window.WebSocket;
         if (NativeWS) {
           window.WebSocket = function(url, protocols) {
             if (protocols === 'vite-hmr' || protocols === 'vite-ping') {
-              const target = new EventTarget();
-              target.readyState = 1; // NativeWS.OPEN
+              var target = new EventTarget();
+              target.readyState = 1;
               target.url = url;
               target.protocol = protocols;
               target.send = function() {};
               target.close = function() {};
               setTimeout(function() {
-                target.dispatchEvent(new Event('open'));
+                try { target.dispatchEvent(new Event('open')); } catch (_) {}
               }, 0);
               return target;
             }
             return new NativeWS(url, protocols);
           };
           window.WebSocket.prototype = NativeWS.prototype;
-          window.WebSocket.CONNECTING = 0;
-          window.WebSocket.OPEN = 1;
-          window.WebSocket.CLOSING = 2;
-          window.WebSocket.CLOSED = 3;
+          try {
+            window.WebSocket.CONNECTING = 0;
+            window.WebSocket.OPEN = 1;
+            window.WebSocket.CLOSING = 2;
+            window.WebSocket.CLOSED = 3;
+          } catch (_) {}
         }
         window.addEventListener('error', function(e) {
-          if (e.message && (e.message.includes('WebSocket') || e.message.includes('vite') || (e.filename && e.filename.includes('@vite/client')))) {
+          if (e && e.message && (e.message.includes('WebSocket') || e.message.includes('vite') || (e.filename && e.filename.includes('@vite/client')))) {
             e.stopImmediatePropagation();
             e.preventDefault();
           }
         }, true);
         window.addEventListener('unhandledrejection', function(e) {
-          if (e.reason && e.reason.message && (e.reason.message.includes('WebSocket') || e.reason.message.includes('vite'))) {
+          if (e && e.reason && e.reason.message && (e.reason.message.includes('WebSocket') || e.reason.message.includes('vite'))) {
             e.stopImmediatePropagation();
             e.preventDefault();
           }
         }, true);
-      })();
+      } catch (_) {}
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kepubify Web - Convertisseur ePub vers KePub & Dropbox</title>

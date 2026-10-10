@@ -80,4 +80,4 @@ npm run build
 ---
 
 ## 📄 Licence
-Sous licence Apache-2.0. 
+Sous licence Apache-2.0.

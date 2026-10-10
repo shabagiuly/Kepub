@@ -1,0 +1,6 @@
+{
+  "name": "Kepubify Web - Convertisseur ePub vers KePub & Dropbox",
+  "description": "Convertissez vos livres numériques ePub au format optimisé KePub pour liseuses Kobo avec téléchargement direct et synchronisation Dropbox.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

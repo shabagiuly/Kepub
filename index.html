@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="fr" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      (function() {
+        const NativeWS = window.WebSocket;
+        if (NativeWS) {
+          window.WebSocket = function(url, protocols) {
+            if (protocols === 'vite-hmr' || protocols === 'vite-ping') {
+              const target = new EventTarget();
+              target.readyState = 1; // NativeWS.OPEN
+              target.url = url;
+              target.protocol = protocols;
+              target.send = function() {};
+              target.close = function() {};
+              setTimeout(function() {
+                target.dispatchEvent(new Event('open'));
+              }, 0);
+              return target;
+            }
+            return new NativeWS(url, protocols);
+          };
+          window.WebSocket.prototype = NativeWS.prototype;
+          window.WebSocket.CONNECTING = 0;
+          window.WebSocket.OPEN = 1;
+          window.WebSocket.CLOSING = 2;
+          window.WebSocket.CLOSED = 3;
+        }
+        window.addEventListener('error', function(e) {
+          if (e.message && (e.message.includes('WebSocket') || e.message.includes('vite') || (e.filename && e.filename.includes('@vite/client')))) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function(e) {
+          if (e.reason && e.reason.message && (e.reason.message.includes('WebSocket') || e.reason.message.includes('vite'))) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+          }
+        }, true);
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kepubify Web - Convertisseur ePub vers KePub & Dropbox</title>
+    <meta name="description" content="Convertissez vos livres numériques ePub au format optimisé KePub pour liseuses Kobo avec téléchargement direct et synchronisation Dropbox." />
+    <meta property="og:title" content="Kepubify Web - Convertisseur ePub vers KePub & Dropbox" />
+    <meta property="og:description" content="Convertissez vos livres numériques ePub au format optimisé KePub pour liseuses Kobo avec téléchargement direct et synchronisation Dropbox." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  </head>
+  <body class="h-full bg-stone-50 text-stone-900 antialiased selection:bg-amber-100 selection:text-amber-900">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

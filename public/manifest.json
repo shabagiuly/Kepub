@@ -1,0 +1,32 @@
+{
+  "id": "./",
+  "name": "Kepubify Web",
+  "short_name": "Kepubify",
+  "description": "Convertisseur ePub vers KePub pour liseuses Kobo avec synchronisation Dropbox.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#1c1917",
+  "background_color": "#fafaf9",
+  "icons": [
+    {
+      "src": "./pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Cloud, Sliders, HelpCircle, Check } from 'lucide-react';
+import { BookOpen, Cloud, Sliders, HelpCircle, Check, Lock } from 'lucide-react';
 import type { DropboxConfig } from '../types/epub';
 
 interface HeaderProps {
@@ -7,6 +7,8 @@ interface HeaderProps {
   onOpenDropboxModal: () => void;
   onOpenTipsModal: () => void;
   onOpenSettingsModal: () => void;
+  isProtected?: boolean;
+  onLock?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -14,6 +16,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenDropboxModal,
   onOpenTipsModal,
   onOpenSettingsModal,
+  isProtected,
+  onLock,
 }) => {
   return (
     <header className="border-b border-stone-200 bg-white/90 backdrop-blur-md sticky top-0 z-30">
@@ -58,8 +62,19 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Zone 3: 1 primary action */}
+        {/* Zone 3: Actions */}
         <div className="flex items-center gap-2 shrink-0">
+          {isProtected && onLock && (
+            <button
+              onClick={onLock}
+              title="Verrouiller la session"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-100 border border-stone-200/80 transition-colors cursor-pointer"
+            >
+              <Lock className="w-3.5 h-3.5 text-stone-500" />
+              <span className="hidden sm:inline">Verrouiller</span>
+            </button>
+          )}
+
           <button
             onClick={onOpenDropboxModal}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${

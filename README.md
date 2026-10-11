@@ -64,6 +64,22 @@ Sur les liseuses Kobo compatibles (Forma, Sage, Elipsa, Clara Colour, Libra Colo
 
 ---
 
+## 🔐 Protéger l'accès par mot de passe (Zéro stockage en clair)
+
+Vous pouvez verrouiller l'accès à votre application sur GitHub Pages par mot de passe. Aucun mot de passe n'est stocké en clair dans le code : l'application utilise une **empreinte cryptographique SHA-256** unidirectionnelle.
+
+1. Ouvrez l'application et cliquez sur **Options de conversion** en haut.
+2. Sous la section **Protection par mot de passe**, saisissez votre mot de passe secret.
+3. Cliquez sur **« Copier le hash pour GitHub Secrets »**.
+4. Sur votre dépôt GitHub :
+   - Allez dans **Settings** &rarr; **Secrets and variables** &rarr; **Actions**.
+   - Cliquez sur **New repository secret**.
+   - Nom : `APP_PASSWORD_HASH`
+   - Valeur : Collez l'empreinte SHA-256 copiée.
+5. GitHub Pages redéploie automatiquement : l'application est désormais verrouillée et demandera votre mot de passe à l'ouverture !
+
+---
+
 ## 🛠️ Développement local
 
 ```bash

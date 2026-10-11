@@ -30,11 +30,21 @@ import { BookList } from './components/BookList';
 import { DropboxModal } from './components/DropboxModal';
 import { KoboTipsModal } from './components/KoboTipsModal';
 import { SettingsModal } from './components/SettingsModal';
+import { PasswordLockScreen } from './components/PasswordLockScreen';
+import {
+  isPasswordProtectionEnabled,
+  isSessionAuthenticated,
+  lockSession,
+} from './lib/auth';
 
 export default function App() {
   const [books, setBooks] = useState<BookItem[]>([]);
   const [dropboxConfig, setDropboxConfig] = useState<DropboxConfig>(getSavedDropboxConfig());
   const [conversionOptions, setConversionOptions] = useState<ConversionOptions>(DEFAULT_CONVERSION_OPTIONS);
+
+  // Authentication & Lock state
+  const [isProtected, setIsProtected] = useState<boolean>(isPasswordProtectionEnabled());
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(isSessionAuthenticated());
 
   // Modals state
   const [isDropboxModalOpen, setIsDropboxModalOpen] = useState(false);
@@ -300,10 +310,21 @@ export default function App() {
     setBooks([]);
   };
 
+  const handleLock = () => {
+    lockSession();
+    setIsAuthenticated(false);
+    showToast('Session verrouillée.', 'info');
+  };
+
   const isConvertingAny = books.some(
     (b) => b.status === 'converting' || b.status === 'parsing'
   );
   const isUploadingAny = books.some((b) => b.uploadStatus === 'uploading');
+
+  // If password protection is enabled and user is not authenticated, show lock screen
+  if (isProtected && !isAuthenticated) {
+    return <PasswordLockScreen onUnlock={() => setIsAuthenticated(true)} />;
+  }
 
   return (
     <div className="min-h-full flex flex-col bg-stone-50 text-stone-900">
@@ -313,6 +334,8 @@ export default function App() {
         onOpenDropboxModal={() => setIsDropboxModalOpen(true)}
         onOpenTipsModal={() => setIsTipsModalOpen(true)}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+        isProtected={isProtected}
+        onLock={handleLock}
       />
 
       {/* Main Container */}
@@ -535,6 +558,10 @@ export default function App() {
         onOptionsChange={(newOptions) => {
           setConversionOptions(newOptions);
           showToast('Options de conversion enregistrées.', 'info');
+        }}
+        onPasswordConfigChanged={() => {
+          setIsProtected(isPasswordProtectionEnabled());
+          setIsAuthenticated(isSessionAuthenticated());
         }}
       />
     </div>

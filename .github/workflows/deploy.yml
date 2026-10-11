@@ -42,6 +42,7 @@ jobs:
         run: npm run build
         env:
           BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          VITE_PASSWORD_HASH: ${{ secrets.APP_PASSWORD_HASH }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

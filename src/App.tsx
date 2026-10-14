@@ -18,11 +18,12 @@ import {
   convertEpubToKepub,
   DEFAULT_CONVERSION_OPTIONS,
 } from './lib/kepubify';
-import { createSampleEpub } from './lib/sampleEpub';
 import {
   getSavedDropboxConfig,
   saveDropboxConfig,
   uploadFileToDropbox,
+  handleDropboxOAuthCallback,
+  getValidAccessToken,
 } from './lib/dropbox';
 import { Header } from './components/Header';
 import { FileDropzone } from './components/FileDropzone';
@@ -50,7 +51,6 @@ export default function App() {
   const [isDropboxModalOpen, setIsDropboxModalOpen] = useState(false);
   const [isTipsModalOpen, setIsTipsModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [isLoadingSample, setIsLoadingSample] = useState(false);
 
   // Status feedback toast
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'info' | 'success' | 'error' } | null>(null);
@@ -61,6 +61,24 @@ export default function App() {
       setToastMessage(null);
     }, 4000);
   };
+
+  // Handle Dropbox OAuth 2.0 PKCE redirect callback on app load
+  useEffect(() => {
+    const checkOAuth = async () => {
+      try {
+        const config = await handleDropboxOAuthCallback();
+        if (config) {
+          setDropboxConfig(config);
+          showToast(`Connecté avec succès à Dropbox en tant que ${config.accountName || 'votre compte'} !`, 'success');
+        }
+      } catch (err: unknown) {
+        console.error('Dropbox OAuth callback error:', err);
+        const msg = err instanceof Error ? err.message : 'Erreur de connexion Dropbox';
+        showToast(msg, 'error');
+      }
+    };
+    checkOAuth();
+  }, []);
 
   // Add files to list
   const handleFilesSelected = async (files: File[]) => {
@@ -105,21 +123,6 @@ export default function App() {
       `${files.length} ${files.length > 1 ? 'livres ajoutés' : 'livre ajouté'} à la liste.`,
       'info'
     );
-  };
-
-  // Load sample book
-  const handleLoadSample = async () => {
-    setIsLoadingSample(true);
-    try {
-      const sampleFile = await createSampleEpub();
-      await handleFilesSelected([sampleFile]);
-      showToast('Livre exemple chargé : Vingt Mille Lieues sous les mers !', 'success');
-    } catch (err: unknown) {
-      console.error(err);
-      showToast('Erreur lors du chargement de l’exemple.', 'error');
-    } finally {
-      setIsLoadingSample(false);
-    }
   };
 
   // Convert a single book
@@ -248,8 +251,19 @@ export default function App() {
     );
 
     try {
+      const validToken = await getValidAccessToken(dropboxConfig);
+      if (!validToken) {
+        setIsDropboxModalOpen(true);
+        throw new Error('Jeton Dropbox invalide ou expiré');
+      }
+
+      if (validToken !== dropboxConfig.accessToken) {
+        const refreshed = getSavedDropboxConfig();
+        setDropboxConfig(refreshed);
+      }
+
       const result = await uploadFileToDropbox(
-        dropboxConfig.accessToken,
+        validToken,
         dropboxConfig.targetFolder,
         book.convertedName,
         book.convertedBlob,
@@ -376,8 +390,6 @@ export default function App() {
         {/* File Dropzone */}
         <FileDropzone
           onFilesSelected={handleFilesSelected}
-          onLoadSample={handleLoadSample}
-          isLoadingSample={isLoadingSample}
         />
 
         {/* Dropbox Active Target Folder Info */}

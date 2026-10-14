@@ -3,14 +3,10 @@ import { UploadCloud, FileText, Sparkles, Plus } from 'lucide-react';
 
 interface FileDropzoneProps {
   onFilesSelected: (files: File[]) => void;
-  onLoadSample: () => void;
-  isLoadingSample: boolean;
 }
 
 export const FileDropzone: React.FC<FileDropzoneProps> = ({
   onFilesSelected,
-  onLoadSample,
-  isLoadingSample,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,23 +89,10 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
                 e.stopPropagation();
                 fileInputRef.current?.click();
               }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-stone-900 text-stone-50 text-xs font-semibold hover:bg-stone-800 transition-colors shadow-xs"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-stone-900 text-stone-50 text-xs font-semibold hover:bg-stone-800 transition-colors shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />
-              Sélectionner des fichiers
-            </button>
-
-            <button
-              type="button"
-              disabled={isLoadingSample}
-              onClick={(e) => {
-                e.stopPropagation();
-                onLoadSample();
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold hover:bg-amber-100 transition-colors disabled:opacity-50"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-700" />
-              <span>{isLoadingSample ? 'Chargement...' : 'Tester avec un livre exemple'}</span>
+              Sélectionner des fichiers ePub
             </button>
           </div>
         </div>

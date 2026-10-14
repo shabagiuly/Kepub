@@ -33,9 +33,12 @@ export interface BookItem {
 
 export interface DropboxConfig {
   accessToken: string;
+  refreshToken?: string;
+  clientId?: string;
+  expiresAt?: number; // timestamp in ms when accessToken expires
   accountEmail?: string;
   accountName?: string;
-  targetFolder: string; // e.g. "/Rakuten Kobo"
+  targetFolder: string; // e.g. "/Applications/Rakuten Kobo"
   isConnected: boolean;
 }
 

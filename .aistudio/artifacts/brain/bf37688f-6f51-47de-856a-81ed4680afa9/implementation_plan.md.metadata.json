@@ -1,0 +1,6 @@
+{
+  "summary": "Plan d'implémentation de la connexion Dropbox OAuth 2.0 PKCE permanente avec renouvellement automatique de token et conservation du jeton manuel en secours.",
+  "updatedAt": "2026-10-14T21:55:41.101391684Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

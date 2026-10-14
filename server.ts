@@ -39,10 +39,31 @@ async function startServer() {
       res.status(response.status).header('Content-Type', 'application/json').send(data);
     } catch (err: unknown) {
       console.error('Dropbox account proxy error:', err);
-      const message = err instanceof Error ? err.message : 'Proxy connection error';
+      const message = err instanceof Error ? err.message : 'Dropbox account error';
       res.status(500).json({ error_summary: message });
     }
   });
+
+  // Proxy endpoint for OAuth token exchange and refresh
+  app.post('/api/dropbox/token', async (req, res) => {
+    try {
+      const response = await fetch('https://api.dropboxapi.com/oauth2/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams(req.body as Record<string, string>).toString(),
+      });
+
+      const data = await response.text();
+      res.status(response.status).header('Content-Type', 'application/json').send(data);
+    } catch (err: unknown) {
+      console.error('Dropbox token proxy error:', err);
+      const message = err instanceof Error ? err.message : 'Token exchange error';
+      res.status(500).json({ error_summary: message });
+    }
+  });
+
 
   // Proxy endpoint for metadata inspection (used to detect existing Kobo folders)
   app.post('/api/dropbox/metadata', async (req, res) => {

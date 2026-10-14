@@ -77,11 +77,19 @@ export function getSavedDropboxConfig(): DropboxConfig {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      let targetFolder = parsed.targetFolder || DEFAULT_DROPBOX_FOLDER;
+      // Auto-migrate legacy default to the official French Kobo directory
+      if (targetFolder === '/Rakuten Kobo') {
+        targetFolder = '/Applications/Rakuten Kobo';
+      }
       return {
         accessToken: parsed.accessToken || '',
+        refreshToken: parsed.refreshToken || undefined,
+        clientId: parsed.clientId || undefined,
+        expiresAt: parsed.expiresAt ? Number(parsed.expiresAt) : undefined,
         accountEmail: parsed.accountEmail || '',
         accountName: parsed.accountName || '',
-        targetFolder: parsed.targetFolder || DEFAULT_DROPBOX_FOLDER,
+        targetFolder,
         isConnected: Boolean(parsed.accessToken),
       };
     }
@@ -111,6 +119,263 @@ export function clearDropboxConfig(): void {
     console.error('Failed to clear dropbox config', err);
   }
 }
+
+const PKCE_VERIFIER_KEY = 'kepub_pkce_code_verifier';
+const PKCE_CLIENT_ID_KEY = 'kepub_pkce_client_id';
+const PKCE_REDIRECT_URI_KEY = 'kepub_pkce_redirect_uri';
+const PKCE_TARGET_FOLDER_KEY = 'kepub_pkce_target_folder';
+
+function base64UrlEncode(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+export function generateCodeVerifier(): string {
+  const array = new Uint8Array(48);
+  crypto.getRandomValues(array);
+  return base64UrlEncode(array.buffer);
+}
+
+export async function generateCodeChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return base64UrlEncode(digest);
+}
+
+export function getOAuthRedirectUri(): string {
+  if (typeof window === 'undefined') return '';
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+
+/**
+ * Initiates the Dropbox OAuth 2.0 PKCE flow (requests offline access for permanent refresh_token)
+ */
+export async function startDropboxOAuth(clientId: string, targetFolder?: string): Promise<void> {
+  const cleanClientId = clientId.trim();
+  if (!cleanClientId) {
+    throw new Error('Veuillez renseigner votre App Key Dropbox.');
+  }
+
+  const verifier = generateCodeVerifier();
+  const challenge = await generateCodeChallenge(verifier);
+  const redirectUri = getOAuthRedirectUri();
+
+  sessionStorage.setItem(PKCE_VERIFIER_KEY, verifier);
+  sessionStorage.setItem(PKCE_CLIENT_ID_KEY, cleanClientId);
+  sessionStorage.setItem(PKCE_REDIRECT_URI_KEY, redirectUri);
+  if (targetFolder) {
+    sessionStorage.setItem(PKCE_TARGET_FOLDER_KEY, targetFolder);
+  }
+
+  const authUrl = new URL('https://www.dropbox.com/oauth2/authorize');
+  authUrl.searchParams.set('client_id', cleanClientId);
+  authUrl.searchParams.set('response_type', 'code');
+  authUrl.searchParams.set('token_access_type', 'offline');
+  authUrl.searchParams.set('code_challenge', challenge);
+  authUrl.searchParams.set('code_challenge_method', 'S256');
+  authUrl.searchParams.set('redirect_uri', redirectUri);
+
+  window.location.href = authUrl.toString();
+}
+
+/**
+ * Checks for OAuth 2.0 PKCE redirect callback on app load and completes authentication
+ */
+export async function handleDropboxOAuthCallback(): Promise<DropboxConfig | null> {
+  if (typeof window === 'undefined') return null;
+
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const error = params.get('error_description') || params.get('error');
+
+  if (error) {
+    const cleanUrl = getOAuthRedirectUri();
+    window.history.replaceState({}, document.title, cleanUrl || window.location.pathname);
+    throw new Error(`Autorisation Dropbox refusée : ${error}`);
+  }
+
+  if (!code) return null;
+
+  const verifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
+  const clientId = sessionStorage.getItem(PKCE_CLIENT_ID_KEY);
+  const redirectUri = sessionStorage.getItem(PKCE_REDIRECT_URI_KEY) || getOAuthRedirectUri();
+  const savedFolder = sessionStorage.getItem(PKCE_TARGET_FOLDER_KEY);
+
+  if (!verifier || !clientId) {
+    return null;
+  }
+
+  // Clear PKCE state from session
+  sessionStorage.removeItem(PKCE_VERIFIER_KEY);
+  sessionStorage.removeItem(PKCE_CLIENT_ID_KEY);
+  sessionStorage.removeItem(PKCE_REDIRECT_URI_KEY);
+  sessionStorage.removeItem(PKCE_TARGET_FOLDER_KEY);
+
+  // Clean URL immediately
+  window.history.replaceState({}, document.title, redirectUri || window.location.pathname);
+
+  // Exchange code for tokens
+  const bodyParams = new URLSearchParams({
+    code: code,
+    grant_type: 'authorization_code',
+    client_id: clientId,
+    code_verifier: verifier,
+    redirect_uri: redirectUri,
+  });
+
+  let tokenResponse: any;
+  if (isStaticHosting()) {
+    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: bodyParams.toString(),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Échec de l'obtention des jetons Dropbox (${res.status}): ${err}`);
+    }
+    tokenResponse = await res.json();
+  } else {
+    try {
+      const res = await fetch('/api/dropbox/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(Object.fromEntries(bodyParams)),
+      });
+      if (res.ok) {
+        tokenResponse = await res.json();
+      } else {
+        throw new Error(`Proxy token status ${res.status}`);
+      }
+    } catch {
+      const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: bodyParams.toString(),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Échec OAuth Dropbox (${res.status}): ${err}`);
+      }
+      tokenResponse = await res.json();
+    }
+  }
+
+  const accessToken = tokenResponse.access_token;
+  const refreshToken = tokenResponse.refresh_token;
+  const expiresIn = tokenResponse.expires_in || 14400; // in seconds
+  const expiresAt = Date.now() + (expiresIn * 1000);
+
+  // Retrieve account details
+  const account = await verifyDropboxToken(accessToken);
+
+  // Target folder preference
+  let targetFolder = savedFolder || DEFAULT_DROPBOX_FOLDER;
+  if (!savedFolder) {
+    try {
+      const detected = await detectExistingKoboFolder(accessToken);
+      if (detected) targetFolder = detected;
+    } catch {
+      // ignore
+    }
+  }
+
+  const newConfig: DropboxConfig = {
+    accessToken,
+    refreshToken,
+    clientId,
+    expiresAt,
+    accountEmail: account.email,
+    accountName: account.name,
+    targetFolder,
+    isConnected: true,
+  };
+
+  saveDropboxConfig(newConfig);
+  return newConfig;
+}
+
+/**
+ * Ensures the accessToken in config is valid, refreshing it via refreshToken if expired
+ */
+export async function getValidAccessToken(config?: DropboxConfig): Promise<string> {
+  const currentConfig = config || getSavedDropboxConfig();
+  if (!currentConfig.isConnected || !currentConfig.accessToken) {
+    return '';
+  }
+
+  const now = Date.now();
+  // If no refresh token or not yet expired (with 5 min safety margin), return current token
+  if (!currentConfig.refreshToken || !currentConfig.clientId || (currentConfig.expiresAt && now < currentConfig.expiresAt - 5 * 60 * 1000)) {
+    return currentConfig.accessToken;
+  }
+
+  // Refresh token required
+  const bodyParams = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: currentConfig.refreshToken,
+    client_id: currentConfig.clientId,
+  });
+
+  try {
+    let res: Response;
+    if (isStaticHosting()) {
+      res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: bodyParams.toString(),
+      });
+    } else {
+      res = await fetch('/api/dropbox/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.fromEntries(bodyParams)),
+      });
+      if (!res.ok && res.status === 404) {
+        res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: bodyParams.toString(),
+        });
+      }
+    }
+
+    if (res.ok) {
+      const data = await res.json();
+      const newAccessToken = data.access_token;
+      const expiresIn = data.expires_in || 14400;
+      const updatedConfig: DropboxConfig = {
+        ...currentConfig,
+        accessToken: newAccessToken,
+        expiresAt: Date.now() + (expiresIn * 1000),
+      };
+      saveDropboxConfig(updatedConfig);
+      return newAccessToken;
+    }
+  } catch (err) {
+    console.warn('Automatic token refresh failed, falling back to current token:', err);
+  }
+
+  return currentConfig.accessToken;
+}
+
 
 export interface DropboxAccountInfo {
   name: string;
